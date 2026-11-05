@@ -1,53 +1,44 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import {
+  ChevronDown,
+  Download,
+  Home,
+  Info,
+  Mail,
+  Map as MapIcon,
+  Menu,
+  Mountain,
+  Waves,
+  X,
+} from "lucide-react";
 import { SITE } from "../siteConfig";
 
 export type PageId = "home" | "sdr" | "swy" | "about" | "contact" | "download";
 
-export const MAP_PAGES: { id: PageId; label: string; desc: string }[] = [
+export const MAP_PAGES = [
   {
-    id: "sdr",
+    id: "sdr" as PageId,
     label: "Sediment Export",
-    desc: "InVEST SDR · compare scenarios",
+    desc: "Compare erosion scenarios",
+    icon: Mountain,
+    tone: "orange",
   },
   {
-    id: "swy",
+    id: "swy" as PageId,
     label: "Seasonal Water Yield",
-    desc: "InVEST SWY · compare scenarios",
+    desc: "Compare hydrological response",
+    icon: Waves,
+    tone: "blue",
   },
 ];
 
-const Icon = {
-  down: (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true">
-      <path d="M12 3v12m0 0l-5-5m5 5l5-5M5 21h14" />
-    </svg>
-  ),
-  chev: (
-    <svg
-      viewBox="0 0 24 24"
-      width="14"
-      height="14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true">
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  ),
-};
+const LINKS: { id: PageId; label: string; icon: typeof Home }[] = [
+  { id: "about", label: "About", icon: Info },
+  { id: "contact", label: "Contact", icon: Mail },
+  { id: "download", label: "Download", icon: Download },
+];
 
 export default function Header({
   page,
@@ -56,36 +47,16 @@ export default function Header({
   page: PageId;
   go: (p: PageId) => void;
 }) {
-  const [menu, setMenu] = useState(false); // "Maps" dropdown
-  const [mobile, setMobile] = useState(false); // hamburger menu on small screens
-  const navRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (navRef.current && !navRef.current.contains(e.target as Node))
-        setMenu(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setMenu(false);
-        setMobile(false);
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, []);
+  const [mapsOpen, setMapsOpen] = useState(false); // "Maps" dropdown (desktop)
+  const [mobile, setMobile] = useState(false); // slide-down menu (small screens)
+  const mapsActive = page === "sdr" || page === "swy";
 
   const nav = (p: PageId) => {
     go(p);
-    setMenu(false);
+    setMapsOpen(false);
     setMobile(false);
   };
   const cls = (on: boolean) => `nav-btn${on ? " active" : ""}`;
-  const mapsActive = page === "sdr" || page === "swy";
 
   return (
     <header className="top">
@@ -95,79 +66,107 @@ export default function Header({
           onClick={() => nav("home")}
           aria-label="Go to Home page">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="logo" src={SITE.logo} alt="" width={44} height={44} />
+          <img className="logo" src={SITE.logo} alt="" width={48} height={48} />
           <span className="brand-text">
             <span className="brand-title">{SITE.title}</span>
             <span className="brand-sub">{SITE.subtitle}</span>
           </span>
         </button>
 
-        <button
-          className="burger"
-          aria-label="Toggle menu"
-          aria-expanded={mobile}
-          onClick={() => setMobile((m) => !m)}>
-          <span />
-          <span />
-          <span />
-        </button>
-
-        <nav
-          ref={navRef}
-          className={`nav${mobile ? " open" : ""}`}
-          aria-label="Main">
+        <nav className="nav" aria-label="Primary navigation">
           <button
             className={cls(page === "home")}
             aria-current={page === "home" ? "page" : undefined}
             onClick={() => nav("home")}>
-            Home
+            <Home size={16} /> Home
           </button>
 
-          <div className="dd">
+          <div
+            className="dd"
+            onMouseEnter={() => setMapsOpen(true)}
+            onMouseLeave={() => setMapsOpen(false)}
+            onKeyDown={(e) => e.key === "Escape" && setMapsOpen(false)}>
             <button
-              className={cls(mapsActive || menu)}
+              className={cls(mapsActive)}
               aria-haspopup="menu"
-              aria-expanded={menu}
-              onClick={() => setMenu((m) => !m)}>
-              Maps{" "}
-              <span className={`chev${menu ? " up" : ""}`}>{Icon.chev}</span>
+              aria-expanded={mapsOpen}
+              onClick={() => setMapsOpen((o) => !o)}>
+              <MapIcon size={16} /> Maps{" "}
+              <ChevronDown
+                size={14}
+                className={`chev${mapsOpen ? " up" : ""}`}
+              />
             </button>
-            {menu && (
-              <div className="dd-menu" role="menu">
-                {MAP_PAGES.map((m) => (
-                  <button
-                    key={m.id}
-                    role="menuitem"
-                    className={page === m.id ? "on" : ""}
-                    onClick={() => nav(m.id)}>
-                    <b>{m.label}</b>
-                    <small>{m.desc}</small>
-                  </button>
-                ))}
+            {mapsOpen && (
+              <div className="dd-wrap">
+                <div className="dd-menu" role="menu">
+                  {MAP_PAGES.map(({ id, label, desc, icon: Icon, tone }) => (
+                    <button
+                      key={id}
+                      role="menuitem"
+                      className={page === id ? "on" : ""}
+                      onClick={() => nav(id)}>
+                      <Icon size={16} className={`tone-${tone}`} />
+                      <span>
+                        <b>{label}</b>
+                        <small>{desc}</small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
 
-          <button
-            className={cls(page === "about")}
-            aria-current={page === "about" ? "page" : undefined}
-            onClick={() => nav("about")}>
-            About
-          </button>
-          <button
-            className={cls(page === "contact")}
-            aria-current={page === "contact" ? "page" : undefined}
-            onClick={() => nav("contact")}>
-            Contact
-          </button>
-          <button
-            className={`nav-btn cta${page === "download" ? " active" : ""}`}
-            aria-current={page === "download" ? "page" : undefined}
-            onClick={() => nav("download")}>
-            {Icon.down} Download
-          </button>
+          {LINKS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              className={cls(page === id)}
+              aria-current={page === id ? "page" : undefined}
+              onClick={() => nav(id)}>
+              <Icon size={16} /> {label}
+            </button>
+          ))}
         </nav>
+
+        <button
+          className="burger"
+          aria-label="Toggle navigation"
+          aria-expanded={mobile}
+          onClick={() => setMobile((m) => !m)}>
+          {mobile ? <X size={20} /> : <Menu size={20} />}
+        </button>
       </div>
+
+      {mobile && (
+        <nav className="mnav" aria-label="Mobile navigation">
+          <p className="mnav-t">Navigate</p>
+          <button className={cls(page === "home")} onClick={() => nav("home")}>
+            <Home size={16} /> Home
+          </button>
+          <div className="mnav-group">
+            <p className="mnav-t">
+              <MapIcon size={14} /> Maps
+            </p>
+            {MAP_PAGES.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                className={cls(page === id)}
+                onClick={() => nav(id)}>
+                <Icon size={16} /> {label}
+              </button>
+            ))}
+          </div>
+          {LINKS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              className={cls(page === id)}
+              onClick={() => nav(id)}>
+              <Icon size={16} /> {label}
+            </button>
+          ))}
+        </nav>
+      )}
     </header>
   );
 }

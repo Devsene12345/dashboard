@@ -1,6 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import {
+  ArrowDownToLine,
+  FileCode2,
+  FileSpreadsheet,
+  Layers3,
+  Mountain,
+  Package,
+  Sprout,
+  Waves,
+} from "lucide-react";
 import { SCEN, SKEYS } from "../data";
 import {
   DATASETS,
@@ -15,6 +25,32 @@ import {
 import { LULC_FILES, SDR_FILES, SWY_FILES, VECTORS } from "../mapConfig";
 
 type Status = "busy" | "done" | "missing";
+
+function Card({
+  icon: Icon,
+  title,
+  desc,
+  meta,
+  children,
+}: {
+  icon: typeof Layers3;
+  title: string;
+  desc: string;
+  meta: string;
+  children: ReactNode;
+}) {
+  return (
+    <article className="dcard">
+      <div className="dcard-ic">
+        <Icon size={20} strokeWidth={1.8} />
+      </div>
+      <h3>{title}</h3>
+      <p>{desc}</p>
+      <span className="dcard-meta">{meta}</span>
+      {children}
+    </article>
+  );
+}
 
 export default function DownloadPage() {
   const [status, setStatus] = useState<Record<string, Status>>({});
@@ -52,18 +88,9 @@ export default function DownloadPage() {
           ? "File not found"
           : idle;
 
-  const Btn = ({
-    k,
-    idle,
-    onClick,
-    kind = "",
-  }: {
-    k: string;
-    idle: string;
-    onClick: () => void;
-    kind?: string;
-  }) => (
+  const btn = (k: string, idle: string, onClick: () => void, kind = "") => (
     <button
+      key={k}
       className={`dl-btn ${kind} ${status[k] ?? ""}`}
       disabled={status[k] === "busy"}
       onClick={onClick}
@@ -72,136 +99,153 @@ export default function DownloadPage() {
           ? "Add this file to public/Hulu Ganga/"
           : undefined
       }>
+      {kind !== "sm" && <ArrowDownToLine size={16} />}
       {label(k, idle)}
     </button>
   );
 
   const rasterGroups = [
-    { title: "Land use / land cover (LULC)", files: LULC_FILES },
-    { title: "Sediment export (SDR)", files: SDR_FILES },
-    { title: "Seasonal water yield (SWY)", files: SWY_FILES },
+    {
+      title: "Land use / land cover",
+      desc: "Classified LULC raster for each land-use scenario.",
+      icon: Sprout,
+      files: LULC_FILES,
+    },
+    {
+      title: "Sediment export",
+      desc: "InVEST SDR sediment export raster for each scenario.",
+      icon: Mountain,
+      files: SDR_FILES,
+    },
+    {
+      title: "Seasonal water yield",
+      desc: "InVEST SWY raster for each scenario.",
+      icon: Waves,
+      files: SWY_FILES,
+    },
   ];
 
   return (
-    <div className="dl">
-      <section className="dl-hero">
-        <h2>Download data</h2>
-        <p>
-          Tables as CSV (opens in Excel or any GIS tool) and the map layers as
-          GeoTIFF rasters and zipped shapefiles, ready for QGIS or ArcGIS.
-        </p>
-        <Btn
-          k="all-csv"
-          idle="Download all CSV tables (.zip)"
-          kind="primary"
-          onClick={() =>
-            run("all-csv", async () =>
-              saveBlob(await zipCsvs(), "hulu_ganga_tables.zip"),
-            )
-          }
-        />
-      </section>
+    <div className="info dl">
+      <div className="info-in">
+        <div className="info-head">
+          <span className="eyebrow">Open research outputs</span>
+          <h1>Download data &amp; maps</h1>
+          <p>
+            Export the scenario tables as CSV, and the map layers as GeoTIFF
+            rasters and zipped shapefiles that open directly in QGIS or ArcGIS.
+          </p>
+        </div>
 
-      <section className="card wide">
-        <h3>Tables (CSV)</h3>
-        <div className="dl-grid">
+        <h2 className="dl-h">Tables (CSV)</h2>
+        <div className="dgrid">
           {DATASETS.map((d) => (
-            <div key={d.id} className="dl-item">
-              <div>
-                <b>{d.title}</b>
-                <p>{d.desc}</p>
-                <code>{d.file}</code>
+            <Card
+              key={d.id}
+              icon={FileSpreadsheet}
+              title={d.title}
+              desc={d.desc}
+              meta={`CSV · ${d.file}`}>
+              {btn(d.id, "Download CSV", () =>
+                run(d.id, async () => saveBlob(csvBlob(datasetCsv(d)), d.file)),
+              )}
+            </Card>
+          ))}
+          <Card
+            icon={Package}
+            title="All tables"
+            desc="All five CSV tables bundled in a single zip file."
+            meta="ZIP · 5 CSV files">
+            {btn("all-csv", "Download all (.zip)", () =>
+              run("all-csv", async () =>
+                saveBlob(await zipCsvs(), "hulu_ganga_tables.zip"),
+              ),
+            )}
+          </Card>
+        </div>
+
+        <h2 className="dl-h">Map layers (GeoTIFF)</h2>
+        <div className="dgrid">
+          {rasterGroups.map((g) => (
+            <Card
+              key={g.title}
+              icon={g.icon}
+              title={g.title}
+              desc={g.desc}
+              meta="GeoTIFF · one file per scenario">
+              <div className="dl-sc">
+                {SKEYS.map((k) => {
+                  const url = g.files[k];
+                  return btn(
+                    url,
+                    SCEN[k].short,
+                    () =>
+                      run(url, async () =>
+                        saveBlob(await fetchBlob(url), fileNameOf(url)),
+                      ),
+                    "sm",
+                  );
+                })}
               </div>
-              <Btn
-                k={d.id}
-                idle="Download CSV"
-                onClick={() =>
-                  run(d.id, async () =>
-                    saveBlob(csvBlob(datasetCsv(d)), d.file),
-                  )
-                }
-              />
-            </div>
+            </Card>
           ))}
         </div>
-      </section>
 
-      <section className="card wide">
-        <h3>Map layers (GeoTIFF)</h3>
-        <p className="note top0">
-          Rasters are served from <code>public/Hulu Ganga/</code>. A button
-          shows “File not found” until that scenario’s file has been added.
-        </p>
-        <div className="tbl-wrap">
-          <table className="tbl dl-tbl">
-            <thead>
-              <tr>
-                <th>Layer</th>
-                {SKEYS.map((k) => (
-                  <th key={k}>{SCEN[k].name}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rasterGroups.map((g) => (
-                <tr key={g.title}>
-                  <td>
-                    <b>{g.title}</b>
-                  </td>
-                  {SKEYS.map((k) => {
-                    const url = g.files[k];
-                    return (
-                      <td key={k}>
-                        <Btn
-                          k={url}
-                          idle="GeoTIFF"
-                          kind="sm"
-                          onClick={() =>
-                            run(url, async () =>
-                              saveBlob(await fetchBlob(url), fileNameOf(url)),
-                            )
-                          }
-                        />
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="card wide">
-        <h3>Vector layers (Shapefile, zipped)</h3>
-        <div className="dl-grid">
+        <h2 className="dl-h">Vector layers (Shapefile / GeoJSON)</h2>
+        <div className="dgrid">
           {(Object.keys(VECTORS) as (keyof typeof VECTORS)[]).map((id) => {
             const v = VECTORS[id];
             const key = `vec-${id}`;
-            return (
-              <div key={id} className="dl-item">
-                <div>
-                  <b>{v.label}</b>
-                  <p>.shp .shx .dbf .prj bundled in one zip.</p>
-                  <code>{fileNameOf(v.base)}.zip</code>
-                </div>
-                <Btn
-                  k={key}
-                  idle="Download ZIP"
-                  onClick={() =>
+            if (v.inline) {
+              return (
+                <Card
+                  key={id}
+                  icon={FileCode2}
+                  title={v.label}
+                  desc="Catchment outline traced from the valid area of the sediment export raster, as a GeoJSON file."
+                  meta="GeoJSON · Catchment_outline.geojson">
+                  {btn(key, "Download GeoJSON", () =>
                     run(key, async () =>
                       saveBlob(
-                        await zipShapefile(v.base),
-                        `${fileNameOf(v.base)}.zip`,
+                        new Blob([JSON.stringify(v.inline)], {
+                          type: "application/geo+json",
+                        }),
+                        "Catchment_outline.geojson",
                       ),
-                    )
-                  }
-                />
-              </div>
+                    ),
+                  )}
+                </Card>
+              );
+            }
+            return (
+              <Card
+                key={id}
+                icon={FileCode2}
+                title={v.label}
+                desc=".shp, .shx, .dbf and .prj bundled in one zip file."
+                meta={`ZIP · ${fileNameOf(v.base!)}.zip`}>
+                {btn(key, "Download ZIP", () =>
+                  run(key, async () =>
+                    saveBlob(
+                      await zipShapefile(v.base!),
+                      `${fileNameOf(v.base!)}.zip`,
+                    ),
+                  ),
+                )}
+              </Card>
             );
           })}
         </div>
-      </section>
+
+        <div className="amber">
+          <b>Source data note</b>
+          <p>
+            Rasters and shapefiles are served from{" "}
+            <code>public/Hulu Ganga/</code>. A button shows “File not found”
+            until that scenario’s file has been added to the folder.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

@@ -3,7 +3,7 @@
 declare module "georaster" {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const parseGeoraster: (
-    data: ArrayBuffer | string | Blob,
+    data: ArrayBuffer | string | Blob | ArrayLike<ArrayLike<ArrayLike<number>>>,
     metadata?: any,
   ) => Promise<any>;
   export default parseGeoraster;

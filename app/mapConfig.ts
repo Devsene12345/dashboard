@@ -1,23 +1,52 @@
 import type { ScenarioKey } from "./data";
+import { CATCHMENT_OUTLINE } from "./catchmentOutline";
 
 /* ------------------------------------------------------------------ *
- * Where the GIS files live: public/Hulu Ganga/
+ * Where the GIS files live.
+ *  - default:  public/Hulu Ganga/  (served by the same site, e.g. Vercel's CDN)
+ *  - optional: set NEXT_PUBLIC_DATA_BASE_URL to the address of a bucket that holds the same files
+ *              (Cloudflare R2, Vercel Blob, AWS S3 ...), e.g. https://data.example.com/Hulu%20Ganga
+ *              The bucket must allow CORS GET/HEAD from the site.
  * ------------------------------------------------------------------ */
-export const DATA_DIR = "/Hulu%20Ganga";
+export const DATA_DIR = (
+  process.env.NEXT_PUBLIC_DATA_BASE_URL || "/Hulu%20Ganga"
+).replace(/\/+$/, "");
 const f = (name: string) => `${DATA_DIR}/${encodeURIComponent(name)}`;
 
 export const MAP_CENTER: [number, number] = [7.4, 80.77];
 export const MAP_ZOOM = 11;
 
-/** Shapefiles (give the path without the extension). Add public/Hulu Ganga/Watersheds.* to switch on the Watersheds layer. */
-export const VECTORS = {
-  gn: { label: "GN boundary", base: f("GN") },
-  weirs: { label: "Hydro weirs", base: f("hydro_weir_locations") },
-  ws: { label: "Watersheds", base: f("Watersheds") },
-} as const;
+/**
+ * Vector layers.
+ *  - base:    path of a shapefile without the extension (needs the .shp and .dbf next to each other)
+ *  - crs:     coordinate system of the shapefile when it must be set by hand (see PROJ_DEFS); leave it out to read the .prj file
+ *  - geojson: path of a ready-made GeoJSON file in longitude/latitude (EPSG:4326)
+ *  - inline:  GeoJSON written directly in the code (longitude/latitude)
+ *
+ * ws: no Watersheds shapefile has been added to public/Hulu Ganga yet, so the outer catchment outline
+ *     (app/catchmentOutline.ts, traced from the valid area of "Sediment export BAU.tif") is shown instead.
+ *     When you have the real shapefile, replace the ws line with:  ws: { label: 'Watersheds', base: f('Watersheds') },
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface VectorDef {
+  label: string;
+  base?: string;
+  crs?: string;
+  geojson?: string;
+  inline?: any;
+}
+export const VECTORS: Record<"gn" | "weirs" | "ws", VectorDef> = {
+  gn: { label: "GN boundary", base: f("GN"), crs: "KANDAWALA_SLG" },
+  weirs: {
+    label: "Hydro weirs",
+    base: f("hydro_weir_locations"),
+    crs: "EPSG:4326",
+  },
+  ws: { label: "Catchment outline", inline: CATCHMENT_OUTLINE },
+};
 export type VectorId = keyof typeof VECTORS;
 
-/** GeoTIFF per scenario. Only the BAU files exist today; add the others with these names (or rename here). */
+/** GeoTIFF per scenario. Only the BAU land-use and BAU sediment-export files exist today; add the others with these names (or rename them here). */
 export const LULC_FILES: Record<ScenarioKey, string> = {
   S1: f("Land use_ Hulu ganga1.tif"),
   S2: f("Land use_ SWC.tif"),
@@ -37,28 +66,6 @@ export const SWY_FILES: Record<ScenarioKey, string> = {
   S4: f("Seasonal water yield INTEGRATED.tif"),
 };
 
-/**
- * Verified spatial files included in the supplied project folder.
- * Keep this in sync with public/Hulu Ganga/. A missing scenario raster must
- * never be substituted with the BAU raster, because that would misrepresent
- * the selected scenario on the map.
- */
-export const RASTER_AVAILABILITY: Record<
-  "lulc" | "sdr" | "swy",
-  Record<ScenarioKey, boolean>
-> = {
-  lulc: { S1: true, S2: false, S3: false, S4: false },
-  sdr: { S1: true, S2: false, S3: false, S4: false },
-  swy: { S1: false, S2: false, S3: false, S4: false },
-};
-
-export const SPATIAL_DATA_STATUS = {
-  vectors: ["GN boundary", "Hydro weir locations"],
-  rasters: ["BAU land-use raster", "BAU sediment-export raster"],
-  missing:
-    "Scenario-specific S2–S4 rasters and Seasonal Water Yield GeoTIFFs are not included in the supplied project folder.",
-} as const;
-
 /** Projections that georaster-layer-for-leaflet may need (EPSG:4326 and 3857 are built in).
  *  If the browser console reports an unsupported projection, add its proj4 string here,
  *  or re-export the raster from QGIS as EPSG:4326. */
@@ -70,6 +77,11 @@ export const PROJ_DEFS: [string, string][] = [
   [
     "EPSG:5234",
     "+proj=tmerc +lat_0=7.00047152777778 +lon_0=80.77171308333334 +k=0.9999238418 +x_0=500000 +y_0=500000 +a=6377276.345 +b=6356075.41314024 +towgs84=-97,787,86,0,0,0,0 +units=m +no_defs",
+  ],
+  // Kandawala / Sri Lanka Grid, the system of GN.shp (false easting/northing 200000, datum shift to WGS84 from EPSG:4244)
+  [
+    "KANDAWALA_SLG",
+    "+proj=tmerc +lat_0=7.000480277777778 +lon_0=80.77171111111112 +k=0.9999238418 +x_0=200000 +y_0=200000 +a=6377276.345 +rf=300.8017 +towgs84=-97,787,86,0,0,0,0 +units=m +no_defs",
   ],
   ["EPSG:32644", "+proj=utm +zone=44 +datum=WGS84 +units=m +no_defs"],
 ];
@@ -83,7 +95,7 @@ export const SDR_BINS = [
   { max: 0.01, color: "#8fc9a8", label: "0.001 – 0.01" },
   { max: 0.1, color: "#f58f55", label: "0.01 – 0.1" },
   { max: 1, color: "#d9efb4", label: "0.1 – 1" },
-  { max: Infinity, color: "#d7191c", label: "1 – 38" },
+  { max: Infinity, color: "#d7191c", label: "1 – 47" },
 ];
 export function sdrColor(v: number): string {
   for (const b of SDR_BINS) if (v < b.max) return b.color;
@@ -91,9 +103,9 @@ export function sdrColor(v: number): string {
 }
 
 /* ------------------------------------------------------------------ *
- * LULC classes. EDIT THE CODES to match the "Value" column of your raster's
- * attribute table (Land use_ Hulu ganga1.tif.vat.dbf, open it in QGIS or Excel).
- * Codes 1-17 are the BAU classes in legend order; 18+ are scenario-specific classes.
+ * LULC classes. These are the 7 classes stored in "Land use_ Hulu ganga1.tif"
+ * (the Value / Level_1 columns of its attribute table, Land use_ Hulu ganga1.tif.vat.dbf).
+ * If a scenario raster uses extra codes, add them here and list them in LULC_LEGEND_CODES.
  * ------------------------------------------------------------------ */
 export interface LulcClass {
   code: number;
@@ -101,51 +113,23 @@ export interface LulcClass {
   color: string;
 }
 export const LULC_CLASSES: LulcClass[] = [
-  { code: 1, name: "High-impervious urban / Playgrounds", color: "#a07cd8" },
-  { code: 2, name: "Institutional", color: "#d97fa6" },
-  { code: 3, name: "Residential", color: "#7b70ca" },
-  { code: 4, name: "Home garden", color: "#74e832" },
-  { code: 5, name: "Dense forest", color: "#ebe83f" },
-  { code: 6, name: "Open forest", color: "#dc4568" },
-  { code: 7, name: "Tea", color: "#629fc9" },
-  { code: 8, name: "Perennial plantation", color: "#6a7ccb" },
-  { code: 9, name: "Paddy", color: "#e0401a" },
-  { code: 10, name: "Abandoned paddy", color: "#33eca6" },
-  { code: 11, name: "Annual cropland", color: "#1f1ff0" },
-  { code: 12, name: "Grassland", color: "#e283e3" },
-  { code: 13, name: "Shrubland", color: "#b02acd" },
-  { code: 14, name: "Bare/disturbed", color: "#8a2bd0" },
-  { code: 15, name: "Wetland", color: "#e862c8" },
-  { code: 16, name: "Water", color: "#d6ef64" },
-  { code: 17, name: "Fallow/abandoned", color: "#c9ae45" },
-  // S2 (SWC)
-  { code: 18, name: "Home garden - contour bunds", color: "#e31a1c" },
-  { code: 19, name: "Home garden - grass strips", color: "#ee74b6" },
-  { code: 20, name: "Tea - riparian buffer", color: "#7fd6d6" },
-  { code: 21, name: "Tea - bench terrace", color: "#6dc08b" },
-  { code: 22, name: "Tea - bunds + vetiver", color: "#4cc24c" },
-  { code: 23, name: "Paddy - riparian buffer", color: "#2ee86b" },
-  { code: 24, name: "Paddy - contour bunds", color: "#4a7fdc" },
-  { code: 25, name: "Abandoned paddy - riparian buffer", color: "#9bcb42" },
-  { code: 26, name: "Annual crop - riparian buffer", color: "#22b8e0" },
-  { code: 27, name: "Bare - riparian buffer", color: "#f29150" },
-  { code: 28, name: "Bare - bunds + vetiver", color: "#33cc33" },
-  { code: 29, name: "Fallow - riparian buffer", color: "#7fe8d0" },
-  { code: 30, name: "Fallow - grass strips", color: "#e0b070" },
-  // S3 (REST)
-  { code: 31, name: "Reforested degraded uplands", color: "#e8334a" },
-  { code: 32, name: "Mixed tea + tree systems", color: "#b88a7c" },
-  { code: 33, name: "River buffer vegetation", color: "#ff3be6" },
+  { code: 1, name: "Agricultural land", color: "#f2cf5b" },
+  { code: 2, name: "Bare land", color: "#c8a27c" },
+  { code: 3, name: "Built-up land", color: "#e0483e" },
+  { code: 4, name: "Forest land", color: "#2f7d3b" },
+  { code: 5, name: "Rocky area", color: "#8d9299" },
+  { code: 6, name: "Water bodies", color: "#2f80ed" },
+  { code: 7, name: "Wetland", color: "#4fc3b0" },
 ];
 export const LULC_BY_CODE = new Map(LULC_CLASSES.map((c) => [c.code, c]));
 
-const BASE_CODES = Array.from({ length: 17 }, (_, i) => i + 1);
+const BASE_CODES = LULC_CLASSES.map((c) => c.code);
 /** Class codes listed in the legend of each scenario's LULC map */
 export const LULC_LEGEND_CODES: Record<ScenarioKey, number[]> = {
   S1: BASE_CODES,
-  S2: [...BASE_CODES, ...Array.from({ length: 13 }, (_, i) => 18 + i)],
-  S3: [...BASE_CODES, 31, 32, 33],
-  S4: [...BASE_CODES, 31, 18, 19],
+  S2: BASE_CODES,
+  S3: BASE_CODES,
+  S4: BASE_CODES,
 };
 
 /* ------------------------------------------------------------------ *

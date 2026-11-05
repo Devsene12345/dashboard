@@ -1,8 +1,7 @@
 /* Edit this file to change the names, links and contact details shown on the About, Contact pages and the footer. */
 export const SITE = {
-  title: "Hulu Ganga Catchment, Sri Lanka",
-  subtitle:
-    "Hydrological & sediment modelling · land-use scenarios · mini-hydropower performance",
+  title: "Hulu Ganga HydroGIS",
+  subtitle: "Catchment Decision Support",
   projectTitle:
     "Hydrological and Sediment Modelling to Assess the Impacts of Land-Use Scenarios on Mini-Hydropower Performance, Hulu Ganga Catchment, Sri Lanka",
   logo: "/logo.jpeg",

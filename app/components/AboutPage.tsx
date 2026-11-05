@@ -1,21 +1,45 @@
 "use client";
 
+import { Check, Map as MapIcon, Mountain, Sprout, Waves } from "lucide-react";
 import { SCEN, SKEYS, STATIONS, WS, WS_AREA } from "../data";
 import { SITE } from "../siteConfig";
 import type { PageId } from "./Header";
 
-const TOOLS = [
-  "Next.js",
-  "React",
-  "TypeScript",
-  "Leaflet.js",
-  "Chart.js",
-  "georaster",
-  "shpjs",
-  "proj4",
-  "InVEST SDR",
-  "InVEST SWY",
-  "QGIS",
+const PRINCIPLES = [
+  {
+    icon: Waves,
+    title: "Hydrological response",
+    text: "Understand seasonal water availability under changing land-use conditions.",
+  },
+  {
+    icon: Mountain,
+    title: "Sediment dynamics",
+    text: "Explore erosion and sediment-export pressure across catchment sub-zones.",
+  },
+  {
+    icon: Sprout,
+    title: "Scenario planning",
+    text: "Compare conservation, restoration and integrated management strategies.",
+  },
+];
+
+const STEPS = [
+  [
+    "Prepare inputs",
+    "A 10 m DEM, land-use maps for each scenario, soil and rainfall data are prepared and aligned in GIS.",
+  ],
+  [
+    "Run the models",
+    "The InVEST Sediment Delivery Ratio (SDR) and Seasonal Water Yield (SWY) models are run for the eight watersheds.",
+  ],
+  [
+    "Compare scenarios",
+    "Baseline (BAU) results are compared with soil and water conservation, restoration and integrated scenarios.",
+  ],
+  [
+    "Assess hydropower",
+    "Water yield results are translated into estimated generation at three mini-hydropower stations and checked against CEB 2023 figures.",
+  ],
 ];
 
 export default function AboutPage({ go }: { go: (p: PageId) => void }) {
@@ -28,149 +52,114 @@ export default function AboutPage({ go }: { go: (p: PageId) => void }) {
       l: "catchment area at the outlet (WS 8)",
     },
   ];
-  const steps = [
-    [
-      "Prepare inputs",
-      "A 10 m DEM, land-use maps for each scenario, soil and rainfall data are prepared and aligned in GIS.",
-    ],
-    [
-      "Run the models",
-      "The InVEST Sediment Delivery Ratio (SDR) and Seasonal Water Yield (SWY) models are run for the eight watersheds.",
-    ],
-    [
-      "Compare scenarios",
-      "Baseline (BAU) results are compared with soil and water conservation, restoration and integrated scenarios.",
-    ],
-    [
-      "Assess hydropower",
-      "Water yield results are translated into estimated generation at three mini-hydropower stations and checked against CEB 2023 figures.",
-    ],
-  ];
 
   return (
-    <div className="doc">
-      <section className="about-hero">
-        <span className="eyebrow">About the project</span>
-        <h2>{SITE.projectTitle}</h2>
-        <p>
-          This prototype dashboard lets you explore how different land-use
-          choices change sediment export and seasonal water yield in the Hulu
-          Ganga catchment, and what that means for the mini-hydropower plants
-          that depend on the river.
-        </p>
-        <div className="about-actions">
-          <button className="btn primary" onClick={() => go("sdr")}>
-            Open the maps
-          </button>
-          <button className="btn" onClick={() => go("download")}>
-            Download data
-          </button>
+    <div className="about">
+      <section className="a-hero">
+        <div className="a-hero-in">
+          <div>
+            <span className="eyebrow cyan">About the project</span>
+            <h1>Better land-use decisions for resilient mini-hydropower</h1>
+            <p>
+              {SITE.title} is a prototype decision-support dashboard connecting
+              hydrological and sediment modelling with practical land-use
+              scenario assessment in Sri Lanka&apos;s Central Highlands.
+            </p>
+            <button className="btn light" onClick={() => go("sdr")}>
+              <MapIcon size={16} /> Explore the maps
+            </button>
+          </div>
+          <div className="a-logo">
+            <span />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={SITE.logo} alt={`${SITE.title} logo`} />
+          </div>
         </div>
       </section>
 
-      <div className="facts">
-        {facts.map((f) => (
-          <div key={f.l} className="fact">
-            <b>{f.n}</b>
-            <span>{f.l}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="doc-grid">
-        <section className="card">
-          <h3>Objectives</h3>
-          <ul className="bul">
-            <li>
-              Quantify sediment export and seasonal water yield for the Hulu
-              Ganga catchment under a baseline condition.
-            </li>
-            <li>
-              Test how soil and water conservation, restoration and agroforestry
-              change those results.
-            </li>
-            <li>
-              Show the consequences for the performance of three mini-hydropower
-              stations.
-            </li>
-            <li>
-              Present the results in an interactive web map that planners and
-              stakeholders can use.
-            </li>
-          </ul>
-        </section>
-
-        <section className="card">
-          <h3>Land-use scenarios</h3>
-          <ul className="scen-list">
-            {SKEYS.map((k) => (
-              <li key={k}>
-                <i className="dot" style={{ background: SCEN[k].color }} />
-                <div>
-                  <b>{SCEN[k].name}</b>
-                  <br />
-                  {SCEN[k].desc}.
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      </div>
-
-      <section className="card wide">
-        <h3>Method</h3>
-        <ol className="steps">
-          {steps.map(([t, d], i) => (
-            <li key={t}>
-              <span className="num">{i + 1}</span>
-              <div>
-                <b>{t}</b>
-                <p>{d}</p>
+      <section className="info-in">
+        <div className="pgrid">
+          {PRINCIPLES.map(({ icon: Icon, title, text }) => (
+            <article key={title} className="pcard">
+              <div className="dcard-ic">
+                <Icon size={20} />
               </div>
-            </li>
+              <h2>{title}</h2>
+              <p>{text}</p>
+            </article>
           ))}
-        </ol>
-      </section>
+        </div>
 
-      <div className="doc-grid">
-        <section className="card">
-          <h3>How to use the dashboard</h3>
-          <ul className="bul">
-            <li>
-              <b>Home</b> shows the catchment with watershed, GN boundary, land
-              use and weir layers.
-            </li>
-            <li>
-              <b>Maps</b> opens Sediment Export and Seasonal Water Yield. Drag
-              the divider to compare two scenarios.
-            </li>
-            <li>
-              Switch layers, base map and opacity from the left-hand panel. The
-              legend follows the layers you switch on.
-            </li>
-            <li>
-              <b>Download</b> gives you the tables as CSV and the map layers as
-              GeoTIFF and shapefile.
-            </li>
-          </ul>
-        </section>
+        <div className="facts">
+          {facts.map((f) => (
+            <div key={f.l} className="fact">
+              <b>{f.n}</b>
+              <span>{f.l}</span>
+            </div>
+          ))}
+        </div>
 
-        <section className="card">
-          <h3>Built with</h3>
-          <div className="chips">
-            {TOOLS.map((t) => (
-              <span key={t} className="chip">
-                {t}
-              </span>
+        <div className="study">
+          <div>
+            <span className="eyebrow">Study area</span>
+            <h2>Hulu Ganga Catchment</h2>
+            <p>{SITE.projectTitle}.</p>
+            <p>
+              The catchment supports communities, agriculture, natural
+              ecosystems and mini-hydropower infrastructure. Its steep terrain
+              and changing land cover make integrated water and sediment
+              planning essential.
+            </p>
+          </div>
+          <div className="checks">
+            {[
+              "Google Hybrid basemap",
+              "LULC classification",
+              "GN administrative context",
+              "Four land-use scenarios",
+            ].map((item) => (
+              <div key={item}>
+                <span>
+                  <Check size={14} />
+                </span>
+                {item}
+              </div>
             ))}
           </div>
-          <p className="note">
-            Base maps © Google and © OpenStreetMap contributors. Model results
-            are taken from the project presentation. This is a prototype and the
-            figures should not be used for design decisions.
-          </p>
-        </section>
-      </div>
+        </div>
+
+        <div className="doc-grid">
+          <section className="card">
+            <h3>Land-use scenarios</h3>
+            <ul className="scen-list">
+              {SKEYS.map((k) => (
+                <li key={k}>
+                  <i className="dot" style={{ background: SCEN[k].color }} />
+                  <div>
+                    <b>{SCEN[k].name}</b>
+                    <br />
+                    {SCEN[k].desc}.
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section className="card">
+            <h3>Method</h3>
+            <ol className="steps">
+              {STEPS.map(([t, d], i) => (
+                <li key={t}>
+                  <span className="num">{i + 1}</span>
+                  <div>
+                    <b>{t}</b>
+                    <p>{d}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </div>
+      </section>
     </div>
   );
 }

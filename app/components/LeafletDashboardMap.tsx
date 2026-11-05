@@ -3,17 +3,18 @@
 
 import "leaflet/dist/leaflet.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SCEN, SKEYS, type ScenarioKey } from "../data";
+import { SCEN, type ScenarioKey } from "../data";
+import { isPackedGeoTiff, readPackedGeoTiff } from "../lib/packedTiff";
 import {
   LULC_FILES,
   MAP_CENTER,
   MAP_ZOOM,
   PROJ_DEFS,
-  RASTER_AVAILABILITY,
   SDR_FILES,
   SWY_FILES,
   VECTORS,
   rasterColorFn,
+  type VectorDef,
   type VectorId,
 } from "../mapConfig";
 import type { MapMode, MapState, OverlayId } from "./MapControls";
@@ -24,24 +25,79 @@ interface Props {
   mode: MapMode;
   left: ScenarioKey;
   right: ScenarioKey;
-  onLeftChange: (s: ScenarioKey) => void;
-  onRightChange: (s: ScenarioKey) => void;
   /** layer state, owned by the page and edited in the left panel */
   state: MapState;
 }
 
 /* ---------------- data loading (cached, shared by both maps) ---------------- */
-const vectorCache = new Map<string, Promise<any>>();
-function loadVector(base: string) {
-  if (!vectorCache.has(base)) {
-    const p = import("shpjs")
-      // shpjs needs an absolute URL (it builds "<url>.shp", "<url>.dbf" and "<url>.prj" from it)
-      .then((m) => m.default(new URL(base, window.location.href).href))
-      .then((gj) => (Array.isArray(gj) ? gj[0] : gj));
-    p.catch(() => vectorCache.delete(base));
-    vectorCache.set(base, p);
+const absolute = (u: string) => new URL(u, window.location.href).href;
+
+/** move every coordinate of a GeoJSON object from `crs` to longitude/latitude */
+function reproject(gj: any, proj4: any, crs: string) {
+  if (crs === "EPSG:4326") return gj;
+  const conv = (c: any): any =>
+    typeof c[0] === "number"
+      ? proj4(crs, "EPSG:4326", [c[0], c[1]])
+      : c.map(conv);
+  const walk = (g: any) => {
+    if (!g) return;
+    if (g.type === "GeometryCollection") g.geometries.forEach(walk);
+    else if (g.coordinates) g.coordinates = conv(g.coordinates); // records without a shape are skipped
+    if (g.bbox) delete g.bbox; // the old bbox is in the source coordinate system
+  };
+  (gj.type === "FeatureCollection" ? gj.features : [gj]).forEach((f: any) =>
+    walk(f.type === "Feature" ? f.geometry : f),
+  );
+  delete gj.bbox;
+  return gj;
+}
+
+async function readVector(def: VectorDef) {
+  if (def.inline) return def.inline;
+  if (def.geojson) {
+    const res = await fetch(absolute(def.geojson));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
   }
-  return vectorCache.get(base)!;
+  const shp = (await import("shpjs")).default;
+  if (!def.crs) {
+    // shpjs reads the .prj file and converts to longitude/latitude itself
+    const gj = await shp(absolute(def.base!));
+    return Array.isArray(gj) ? gj[0] : gj;
+  }
+  // coordinate system given in mapConfig.ts: read the raw coordinates, then convert them with proj4
+  const get = async (ext: string, required: boolean) => {
+    const res = await fetch(absolute(`${def.base}.${ext}`));
+    if (!res.ok) {
+      if (required) throw new Error(`HTTP ${res.status}`);
+      return undefined;
+    }
+    return res.arrayBuffer();
+  };
+  const [shpBuf, dbfBuf, cpgBuf] = await Promise.all([
+    get("shp", true),
+    get("dbf", false),
+    get("cpg", false),
+  ]);
+  const raw: any = await (shp as any)({
+    shp: shpBuf,
+    dbf: dbfBuf,
+    cpg: cpgBuf ? new TextDecoder().decode(cpgBuf) : undefined,
+  });
+  const gj = Array.isArray(raw) ? raw[0] : raw;
+  const proj4 = (await import("proj4")).default;
+  PROJ_DEFS.forEach(([code, d]) => proj4.defs(code, d));
+  return reproject(gj, proj4, def.crs);
+}
+
+const vectorCache = new Map<string, Promise<any>>();
+function loadVector(id: VectorId) {
+  if (!vectorCache.has(id)) {
+    const p = readVector(VECTORS[id]);
+    p.catch(() => vectorCache.delete(id));
+    vectorCache.set(id, p);
+  }
+  return vectorCache.get(id)!;
 }
 
 const rasterCache = new Map<string, Promise<any>>();
@@ -52,6 +108,11 @@ function loadRaster(url: string) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const buf = await res.arrayBuffer();
       const parseGeoraster = (await import("georaster")).default;
+      // 1/2/4-bit rasters (e.g. the ArcGIS LULC export) are decoded here instead of by georaster
+      if (isPackedGeoTiff(buf)) {
+        const { values, metadata } = readPackedGeoTiff(buf);
+        return parseGeoraster(values, metadata);
+      }
       return parseGeoraster(buf);
     })();
     p.catch(() => rasterCache.delete(url));
@@ -68,19 +129,19 @@ function rasterUrl(
   mode: MapMode,
   sc: ScenarioKey,
 ): string | null {
-  if (id === "lulc")
-    return RASTER_AVAILABILITY.lulc[sc] ? LULC_FILES[sc] : null;
-  if (id === "main") {
-    if (mode === "sdr")
-      return RASTER_AVAILABILITY.sdr[sc] ? SDR_FILES[sc] : null;
-    if (mode === "swy")
-      return RASTER_AVAILABILITY.swy[sc] ? SWY_FILES[sc] : null;
-  }
+  if (id === "lulc") return LULC_FILES[sc];
+  if (id === "main")
+    return mode === "sdr"
+      ? SDR_FILES[sc]
+      : mode === "swy"
+        ? SWY_FILES[sc]
+        : null;
   return null;
 }
 
 /* ---------------- vector layer helpers ---------------- */
 const NAME_KEYS = [
+  "ADM4_EN",
   "GN_NAME",
   "GND_N",
   "GN_Name",
@@ -129,15 +190,25 @@ function buildVector(L: any, id: VectorId, gj: any, map: any) {
     onEachFeature: (f: any, layer: any) => {
       const props = f.properties || {};
       if (id === "weirs") {
-        const rows = Object.entries(props)
-          .map(
-            ([k, v]) => `<tr><td><b>${esc(k)}</b></td><td>${esc(v)}</td></tr>`,
-          )
-          .join("");
-        layer.bindPopup(`<table class="popup-tbl">${rows}</table>`);
+        // only the weir name is useful here (the other columns are KML export leftovers)
+        const name = esc(props.Name ?? props.name ?? "Hydro weir");
+        layer.bindTooltip(name, { sticky: true });
+        layer.bindPopup(`<b>${name}</b>`);
+      } else if (id === "gn") {
+        const t = tipText(props);
+        const pop = props.Population
+          ? ` · population ${esc(props.Population)}`
+          : "";
+        const ds = props.ADM3_EN
+          ? `${esc(props.ADM3_EN)} DS division${pop}`
+          : "";
+        if (t)
+          layer.bindTooltip(ds ? `<b>${esc(t)}</b><br>${ds}` : esc(t), {
+            sticky: true,
+          });
       } else {
         const t = tipText(props);
-        if (t) layer.bindTooltip(t, { sticky: true });
+        if (t) layer.bindTooltip(esc(t), { sticky: true });
       }
     },
   });
@@ -148,7 +219,7 @@ function useVector(
   enabled: boolean,
   ready: boolean,
   h: React.MutableRefObject<any>,
-  onFail: (id: VectorId) => void,
+  onFail: (id: VectorId, reason: string) => void,
 ) {
   const store = useRef(new Map<any, any>());
   useEffect(() => {
@@ -161,7 +232,7 @@ function useVector(
       return;
     }
     let cancelled = false;
-    loadVector(VECTORS[id].base)
+    loadVector(id)
       .then((gj) => {
         if (cancelled) return;
         maps.forEach((m) => {
@@ -171,8 +242,8 @@ function useVector(
           store.current.set(m, lyr);
         });
       })
-      .catch(() => {
-        if (!cancelled) onFail(id);
+      .catch((e) => {
+        if (!cancelled) onFail(id, String(e?.message || e));
       });
     return () => {
       cancelled = true;
@@ -224,8 +295,6 @@ export default function LeafletDashboardMap({
   mode,
   left,
   right,
-  onLeftChange,
-  onRightChange,
   state,
 }: Props) {
   const compare = mode !== "home";
@@ -331,10 +400,11 @@ export default function LeafletDashboardMap({
 
   /* ---- 3. vector overlays ---- */
   const failVector = useCallback(
-    (id: VectorId) => {
+    (id: VectorId, reason: string) => {
       markMissing(id as OverlayId);
+      const v = VECTORS[id];
       notify(
-        `Could not load "${VECTORS[id].label}" (public/Hulu Ganga/${fileName(VECTORS[id].base)}.shp not found or unreadable).`,
+        `Could not load "${v.label}" (public/Hulu Ganga/${fileName(v.geojson ?? `${v.base}.shp`)} not found or unreadable: ${reason}).`,
       );
     },
     [markMissing, notify],
@@ -364,19 +434,7 @@ export default function LeafletDashboardMap({
     ids.forEach((id, i) => {
       sides.forEach(async ([map, sc]) => {
         const url = rasterUrl(id, mode, sc);
-        if (!map) return;
-        if (!url) {
-          const layerName =
-            id === "lulc"
-              ? "land-use"
-              : mode === "sdr"
-                ? "sediment-export"
-                : "seasonal-water-yield";
-          notify(
-            `Missing spatial file: ${SCEN[sc].name} ${layerName} GeoTIFF is not included in public/Hulu Ganga. Add the raster file to enable this map overlay.`,
-          );
-          return;
-        }
+        if (!url || !map) return;
         try {
           const gr = await loadRaster(url);
           if (cancelled) return;
@@ -474,36 +532,43 @@ export default function LeafletDashboardMap({
         </div>
       )}
 
+      {/* the north arrow is shown on the Home map only */}
+      {!compare && <NorthArrow className="home" />}
+      {!compare && (
+        <div className="map-pill">
+          {base === "osm" ? "OpenStreetMap" : "Google Satellite Hybrid"} ·
+          Catchment extent
+        </div>
+      )}
+
       {compare && (
         <>
-          <div className="sel l">
-            <select
-              value={left}
-              onChange={(e) => onLeftChange(e.target.value as ScenarioKey)}
-              aria-label="Left scenario">
-              {SKEYS.map((k) => (
-                <option key={k} value={k}>
-                  {SCEN[k].name}
-                </option>
-              ))}
-            </select>
+          <div className="map-badge l">
+            <b>A</b>
+            <span>{SCEN[left].short}</span>
           </div>
-          <div className="sel r">
-            <select
-              value={right}
-              onChange={(e) => onRightChange(e.target.value as ScenarioKey)}
-              aria-label="Right scenario">
-              {SKEYS.map((k) => (
-                <option key={k} value={k}>
-                  {SCEN[k].name}
-                </option>
-              ))}
-            </select>
+          <div className="map-badge r">
+            <b>B</b>
+            <span>{SCEN[right].short}</span>
+          </div>
+          <div className="cmp-card">
+            <div className="cmp-lbl">
+              <span>Map A · {SCEN[left].short}</span>
+              <em>Drag to compare</em>
+              <span>Map B · {SCEN[right].short}</span>
+            </div>
+            <input
+              type="range"
+              min={2}
+              max={98}
+              value={Math.round(pos)}
+              onChange={(e) => setPos(Number(e.target.value))}
+              className="cmp-range"
+              aria-label="Reveal comparison map"
+            />
           </div>
         </>
       )}
-
-      <NorthArrow className={compare ? "cmp" : "home"} />
 
       {notices.length > 0 && (
         <div className="notice" role="status">
